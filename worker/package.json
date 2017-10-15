@@ -1,0 +1,15 @@
+{
+  "name": "twitter-worker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "pg": "^7.3.0",
+    "twitter": "^1.7.1"
+  }
+}
