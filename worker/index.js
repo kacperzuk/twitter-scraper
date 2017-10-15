@@ -28,6 +28,10 @@ const pg = {
             return res.rows[0]
         return null
     },
+    cancel_cmd: async (cmd) => {
+        await pg.maybe_connect()
+        await pg.client.query('update cmd_queue set is_processing_since = null where id = $1', [cmd.id]);
+    },
     finish_cmd: async (cmd, result) => {
         await pg.maybe_connect()
         await pg.client.query('begin')
@@ -59,14 +63,27 @@ const t = {
 
 const run = async () => {
     const cmd = await pg.fetch_from_queue()
+    let error;
     if(cmd) {
-        const tag = `Processed command ${JSON.stringify(cmd)}`
-        console.time(tag)
-        const result = await t[cmd.method](cmd.path, cmd.params);
-        await pg.finish_cmd(cmd, result).catch(e => console.error(e.stack))
-        console.timeEnd(tag)
+        console.time('Time')
+        const result = await t[cmd.method](cmd.path, cmd.params).catch(async (err) => {
+            console.log(new Date(), "Failure!")
+            console.log(err)
+            error = err
+            await pg.cancel_cmd(cmd)
+        });
+        if(result) {
+            await pg.finish_cmd(cmd, result).catch(e => console.error(e.stack))
+            console.log(new Date(), `Processed command ${JSON.stringify(cmd)}`)
+        }
+        console.timeEnd('Time')
     }
-    setTimeout(run, 1000)
+    if(error && error.some(e => e.code == 88)) {
+        console.warn(new Date(), "Got rate limit error, sleeping for 10 minutes...")
+        setTimeout(run, 10*60*1000)
+    } else {
+        setTimeout(run, 100)
+    }
 }
 
 run()
