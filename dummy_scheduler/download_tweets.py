@@ -11,11 +11,7 @@ conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGPASSWORD")))
 
 cur = conn.cursor()
-cur.execute("create table if not exists tweets ( twid varchar(100) primary key, uid varchar(100) references users(uid) not null, tweet text not null, created_at timestamp not null )")
-cur.execute("update users set tweets_fetched = null")
-cur.execute("delete from tweets")
-cur.execute("delete from cmd_queue where tag = 'tweets'")
-cur.execute("delete from res_queue where tag = 'tweets'")
+cur.execute("create table if not exists tweets ( twid varchar(100) primary key, uid varchar(100) references users(uid) not null, tweet text not null, created_at timestamp not null, error_fetching_tweets boolean)")
 conn.commit()
 
 def get_result_async(tag):
@@ -32,8 +28,9 @@ def get_result_sync(tag):
     print("Waiting for res tag=%s" % tag)
     result = None
     while not result:
-        time.sleep(0.01)
         result = get_result_async(tag)
+        if not result:
+            time.sleep(0.1)
     return result
 
 def command(method, path, params, tag, metadata=None):
