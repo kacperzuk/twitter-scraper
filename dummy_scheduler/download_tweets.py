@@ -32,7 +32,7 @@ def get_result_sync(tag):
     print("Waiting for res tag=%s" % tag)
     result = None
     while not result:
-        time.sleep(0.10)
+        time.sleep(0.01)
         result = get_result_async(tag)
     return result
 
@@ -54,6 +54,7 @@ def loop():
     cur2 = conn.cursor()
     cur2.execute("select uid from users where tweets_fetched is null for update")
     cur.execute("update users set tweets_fetched = current_timestamp where tweets_fetched is null")
+    conn.commit()
     print("Scheduling downloads for users...")
     i = 0
     for row in cur2:
