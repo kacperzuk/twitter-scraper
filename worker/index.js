@@ -114,9 +114,9 @@ const run = async () => {
         if(error.some(e => e.code == 88)) {
             console.warn(new Date(), "Got rate limit error, ignoring tag "+cmd.tag+" for 1 minute...")
             await pg.cancel_cmd(cmd)
-            ratelimited[tag] = true;
+            ratelimited[cmd.tag] = true;
             setTimeout(() => {
-                delete ratelimited[tag];
+                delete ratelimited[cmd.tag];
             }, 60*1000)
         } else if(error.some(e => e.code == 34)) {
             await pg.finish_cmd(cmd, error[0]);

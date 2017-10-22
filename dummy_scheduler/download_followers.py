@@ -95,7 +95,7 @@ def loop(max_nest_level):
 
 
 if len(sys.argv) > 2:
-    cur.execute("insert into users (uid) values (%s) on conflict do update set nest_level = 0", (screen_name_to_uid(sys.argv[2]),))
+    cur.execute("insert into users (uid) values (%s) on conflict (uid) do update set nest_level = 0", (screen_name_to_uid(sys.argv[2]),))
     conn.commit()
 
 loop(sys.argv[1])
