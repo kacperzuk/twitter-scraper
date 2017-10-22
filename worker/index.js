@@ -109,23 +109,24 @@ const run = async () => {
             console.log(new Date(), `Processed command ${JSON.stringify(cmd)}`)
         }
         console.timeEnd('Time')
-    }
-    if(error && error.some) {
-        if(error.some(e => e.code == 88)) {
-            console.warn(new Date(), "Got rate limit error, ignoring tag "+cmd.tag+" for 1 minute...")
-            await pg.cancel_cmd(cmd)
-            ratelimited[cmd.tag] = true;
-            setTimeout(() => {
-                delete ratelimited[cmd.tag];
-            }, 60*1000)
-        } else if(error.some(e => e.code == 34)) {
-            await pg.finish_cmd(cmd, error[0]);
+        if(error && error.some) {
+            if(error.some(e => e.code == 88)) {
+                console.warn(new Date(), "Got rate limit error, ignoring tag "+cmd.tag+" for 1 minute...")
+                await pg.cancel_cmd(cmd)
+                ratelimited[cmd.tag] = true;
+                setTimeout(() => {
+                    delete ratelimited[cmd.tag];
+                }, 60*1000)
+            } else if(error.some(e => e.code == 34)) {
+                await pg.finish_cmd(cmd, error[0]);
+            }
+        } else if (error && error.name == "Error") {
+            await pg.finish_cmd(cmd, { error: "unauthorized" });
         }
-    } else if (error && error.name == "Error") {
-        await pg.finish_cmd(cmd, { error: "unauthorized" });
+        setImmediate(run)
+    } else {
+        setTimeout(run, 100)
     }
-
-    setTimeout(run, 100)
 }
 
 run()
