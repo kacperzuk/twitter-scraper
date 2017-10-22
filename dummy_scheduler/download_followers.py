@@ -39,8 +39,9 @@ def get_result_sync(tag):
     print("Waiting for res tag=%s" % tag)
     result = None
     while not result:
-        time.sleep(0.10)
         result = get_result_async(tag)
+        if not result:
+            time.sleep(0.1)
     return result
 
 def command(method, path, params, tag, metadata=None):
@@ -94,7 +95,7 @@ def loop(max_nest_level):
 
 
 if len(sys.argv) > 2:
-    cur.execute("insert into users (uid) values (%s) on conflict do nothing", (screen_name_to_uid(sys.argv[2]),))
+    cur.execute("insert into users (uid) values (%s) on conflict do update set nest_level = 0", (screen_name_to_uid(sys.argv[2]),))
     conn.commit()
 
 loop(sys.argv[1])
