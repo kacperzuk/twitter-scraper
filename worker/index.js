@@ -1,6 +1,8 @@
 const { Client } = require('pg')
 const Twitter = require('twitter')
 
+const ratelimited = {};
+
 const pg = {
     client: new Client(),
     connected: false,
@@ -34,6 +36,8 @@ const pg = {
     },
     fetch_from_queue: async () => {
         await pg.maybe_connect()
+        const placeholders = Object.keys(ratelimited).map((v,i) => `$${i+1}`).join(", ");
+        const tagfilter = placeholders ? `and tag not in (${placeholders})` : "";
         const res = await pg.client.query(`
             update cmd_queue
             set
@@ -43,12 +47,13 @@ const pg = {
                 select id
                 from cmd_queue
                 where is_processing_since is null
+                    ${tagfilter}
                 order by id
                 for update skip locked
                 limit 1
             )
             returning id, method, path, params, tag, metadata
-        `)
+        `, Object.keys(ratelimited))
         if (res.rows.length)
             return res.rows[0]
         return null
@@ -107,10 +112,12 @@ const run = async () => {
     }
     if(error && error.some) {
         if(error.some(e => e.code == 88)) {
-            console.warn(new Date(), "Got rate limit error, sleeping for 1 minute...")
+            console.warn(new Date(), "Got rate limit error, ignoring tag "+cmd.tag+" for 1 minute...")
             await pg.cancel_cmd(cmd)
-            setTimeout(run, 60*1000)
-            return;
+            ratelimited[tag] = true;
+            setTimeout(() => {
+                delete ratelimited[tag];
+            }, 60*1000)
         } else if(error.some(e => e.code == 34)) {
             await pg.finish_cmd(cmd, error[0]);
         }
