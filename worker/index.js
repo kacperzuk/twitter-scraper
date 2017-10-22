@@ -107,9 +107,9 @@ const run = async () => {
     }
     if(error && error.some) {
         if(error.some(e => e.code == 88)) {
-            console.warn(new Date(), "Got rate limit error, sleeping for 10 minutes...")
+            console.warn(new Date(), "Got rate limit error, sleeping for 1 minute...")
             await pg.cancel_cmd(cmd)
-            setTimeout(run, 10*60*1000)
+            setTimeout(run, 60*1000)
             return;
         } else if(error.some(e => e.code == 34)) {
             await pg.finish_cmd(cmd, error[0]);
