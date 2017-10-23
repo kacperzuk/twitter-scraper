@@ -88,7 +88,7 @@ def loop():
                 uid = tweet["user"]["id_str"]
                 text = tweet["text"]
                 created_at = tweet["created_at"]
-                cur.execute("insert into users (uid, nest_level) values (%s, 9223372036854775807) on conflict do nothing", (uid,))
+                cur.execute("insert into users (uid, nest_level) values (%s, 2147483647) on conflict do nothing", (uid,))
                 cur.execute("insert into tweets (twid, uid, tweet, created_at) values (%s, %s, %s, %s)", (twid, uid, text, created_at))
 
                 i = i + 1
