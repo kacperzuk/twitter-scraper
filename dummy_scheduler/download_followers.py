@@ -74,17 +74,18 @@ def loop(max_nest_level):
 
         while commands_in_queue("followers") > 0 or results_in_queue("followers") > 0:
             res = get_result_sync("followers")
-            if res["result"]["next_cursor"] != 0:
+            if "next_cursor" in res["result"] and res["result"]["next_cursor"] != 0:
                 command("get", "followers/ids",
                         { "user_id": res["metadata"]["user_id"], "stringify_ids": True,
                           "cursor": res["result"]["next_cursor"] },
                         "followers",
                         res["metadata"])
-            for follower in res["result"]["ids"]:
-                new_users = True
-                nest_level = res["metadata"]["nest_level"] + 1
-                cur.execute("insert into users (uid, nest_level) values (%s, %s) on conflict (uid) do update set nest_level = least(users.nest_level, excluded.nest_level)", (follower, nest_level))
-                cur.execute("insert into followers (follower_uid, folowee_uid) values (%s, %s) on conflict (follower_uid, folowee_uid) do nothing", (follower, res["metadata"]["user_id"]))
+            if "ids" in res["result"]:
+                for follower in res["result"]["ids"]:
+                    new_users = True
+                    nest_level = res["metadata"]["nest_level"] + 1
+                    cur.execute("insert into users (uid, nest_level) values (%s, %s) on conflict (uid) do update set nest_level = least(users.nest_level, excluded.nest_level)", (follower, nest_level))
+                    cur.execute("insert into followers (follower_uid, folowee_uid) values (%s, %s) on conflict (follower_uid, folowee_uid) do nothing", (follower, res["metadata"]["user_id"]))
             conn.commit()
 
 
