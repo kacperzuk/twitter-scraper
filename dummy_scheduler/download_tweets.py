@@ -11,7 +11,7 @@ conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGPASSWORD")))
 
 cur = conn.cursor()
-cur.execute("create table if not exists tweets ( twid varchar(100) primary key, uid varchar(100) references users(uid) not null, tweet text not null, created_at timestamp not null, error_fetching_tweets boolean)")
+cur.execute("create table if not exists tweets ( twid varchar(100) primary key, uid varchar(100) not null, tweet text not null, created_at timestamp not null, error_fetching_tweets boolean)")
 conn.commit()
 
 def get_result_async(tag):
@@ -38,14 +38,14 @@ def command(method, path, params, tag, metadata=None):
     conn.commit()
 
 def commands_in_queue(tag):
-    cur.execute("select count(*) from cmd_queue where tag = %s", (tag,))
+    cur.execute("select 1 from cmd_queue where tag = %s limit 1", (tag,))
     conn.commit()
-    return cur.fetchone()[0]
+    return cur.fetchone()
 
 def results_in_queue(tag):
-    cur.execute("select count(*) from res_queue where tag = %s", (tag,))
+    cur.execute("select 1 from res_queue where tag = %s limit 1", (tag,))
     conn.commit()
-    return cur.fetchone()[0]
+    return cur.fetchone()
 
 def loop():
     cur2 = conn.cursor()
@@ -55,32 +55,52 @@ def loop():
     print("Scheduling downloads for users...")
     i = 0
     for row in cur2:
-        i = i + 1
         u = row[0]
         print(".", end="")
+        sys.stdout.flush()
         command("get", "statuses/user_timeline",
-                { "user_id": str(u), "trim_user": True },
+                { "user_id": str(u), "trim_user": True, "count": 200, "include_rts": True, "exclude_replies": False },
                 "tweets",
                 { "user_id": u })
-        if i % 100 == 0:
+        i = i + 1
+        if i % 1000 == 0:
             conn.commit()
     conn.commit()
 
     print("Processing tweets...")
-    while commands_in_queue("tweets") > 0 or results_in_queue("tweets") > 0:
-        res = get_result_sync("tweets")
-        for tweet in res["result"]:
-            if "id_str" in tweet:
+    i = 0
+    while True:
+        print(".", end="")
+        sys.stdout.flush()
+        res = get_result_async("tweets")
+        if not res:
+            print("")
+            if commands_in_queue("tweets") or results_in_queue("tweets"):
+                res = get_result_sync("tweets")
+            else:
+                break
+        if isinstance(res["result"], list) and len(res["result"]) > 0 and "id_str" not in res["result"][0]:
+            cur.execute("update users set error_fetching_tweets = 't' where uid = %s", (res["metadata"]["user_id"],))
+        elif isinstance(res["result"], list):
+            cur.execute("update users set error_fetching_tweets = 'f' where uid = %s", (res["metadata"]["user_id"],))
+            for tweet in res["result"]:
                 twid = tweet["id_str"]
                 uid = tweet["user"]["id_str"]
                 text = tweet["text"]
                 created_at = tweet["created_at"]
-                cur.execute("insert into tweets (twid, uid, tweet, created_at) values (%s, %s, %s, %s)", (twid, uid, text, created_at))
-                cur.execute("update users set error_fetching_tweets = 'f' where uid = %s", (uid,))
-            else:
-                cur.execute("update users set error_fetching_tweets = 't' where uid = %s", (uid,))
-        conn.commit()
+                try:
+                    cur.execute("insert into tweets (twid, uid, tweet, created_at) values (%s, %s, %s, %s)", (twid, uid, text, created_at))
+                except psycopg2.IntegrityError:
+                    cur.execute("insert into users (uid, nest_level) values (%s, 9223372036854775807)", (uid,))
+                    cur.execute("insert into tweets (twid, uid, tweet, created_at) values (%s, %s, %s, %s)", (twid, uid, text, created_at))
 
+                i = i + 1
+                if i % 1000 == 0:
+                    conn.commit()
+        else:
+            with open("log", "w") as f:
+                f.write("Oddity found for tweets response: "+json.dumps(res))
+        conn.commit()
 
     print("Done.")
     cur.execute("select count(*) from tweets")
