@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "oauth": "^0.9.15",
     "pg": "^7.3.0",
     "twitter": "^1.7.1"
   }
