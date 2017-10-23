@@ -83,12 +83,15 @@ def loop():
             cur.execute("update users set error_fetching_tweets = 't' where uid = %s", (res["metadata"]["user_id"],))
         elif isinstance(res["result"], list):
             cur.execute("update users set error_fetching_tweets = 'f' where uid = %s", (res["metadata"]["user_id"],))
+            cache = []
             for tweet in res["result"]:
                 twid = tweet["id_str"]
                 uid = tweet["user"]["id_str"]
                 text = tweet["text"]
                 created_at = tweet["created_at"]
-                cur.execute("insert into users (uid, nest_level) values (%s, 2147483647) on conflict do nothing", (uid,))
+                if uid not in cache:
+                    cur.execute("insert into users (uid, nest_level) values (%s, 2147483647) on conflict do nothing", (uid,))
+                    cache.append(uid)
                 cur.execute("insert into tweets (twid, uid, tweet, created_at) values (%s, %s, %s, %s)", (twid, uid, text, created_at))
 
                 i = i + 1
