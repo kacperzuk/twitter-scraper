@@ -9,6 +9,7 @@ conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGUSER"),
     os.getenv("PGHOST"),
     os.getenv("PGPASSWORD")))
+cur = conn.cursor()
 
 def get_result_async(tag):
     cur.execute("select id, result, metadata from res_queue where tag = %s order by id for update skip locked limit 1", (tag,))
@@ -43,10 +44,74 @@ def results_in_queue(tag):
     conn.commit()
     return cur.fetchone()
 
+uid_cache = []
+def insert_tweet(tweet):
+    global uid_cache
+    retweet_of = None
+    if "retweeted_status" in tweet and tweet["retweeted_status"]:
+        insert_tweet(tweet["retweeted_status"])
+        retweet_of = tweet["retweeted_status"]["id_str"]
+    uid = tweet["user"]["id_str"]
+    if uid not in uid_cache:
+        cur.execute("insert into metadata (uid, nest_level) values (%s, 2147483647) on conflict do nothing", (uid,))
+        uid_cache.append(uid)
+    try:
+        cur.execute("""
+        insert into tweets (
+        twid,
+        uid,
+        tweet,
+        created_at,
+        truncated,
+        hashtags,
+        symbols,
+        user_mentions,
+        urls,
+        in_reply_to_status_id,
+        in_reply_to_user_id,
+        in_reply_to_screen_name,
+        geo,
+        coordinates,
+        place,
+        retweet_of,
+        is_quote_status,
+        retweet_count,
+        favorite_count,
+        possibly_sensitive,
+        lang
+        ) values ( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            tweet["id_str"],
+            uid,
+            tweet["text"],
+            tweet["created_at"],
+            tweet["truncated"],
+            json.dumps(tweet["entities"]["hashtags"]),
+            json.dumps(tweet["entities"]["symbols"]),
+            json.dumps(tweet["entities"]["user_mentions"]),
+            json.dumps(tweet["entities"]["urls"]),
+            tweet["in_reply_to_status_id"],
+            tweet["in_reply_to_user_id"],
+            tweet["in_reply_to_screen_name"],
+            tweet["geo"],
+            tweet["coordinates"],
+            tweet["place"],
+            retweet_of,
+            tweet["is_quote_status"],
+            tweet["retweet_count"],
+            tweet["favorite_count"],
+            tweet["possibly_sensitive"],
+            tweet["lang"]
+        ))
+    except:
+        from pprint import pprint
+        pprint(tweet)
+        raise
+
 def loop():
     cur2 = conn.cursor()
-    cur2.execute("select uid from users where tweets_fetched is null for update")
-    cur.execute("update users set tweets_fetched = current_timestamp where tweets_fetched is null")
+    cur2.execute("select uid from metadata where tweets_requested is null for update")
+    cur.execute("update metadata set tweets_requested = current_timestamp where tweets_requested is null")
     conn.commit()
     print("Scheduling downloads for users...")
     i = 0
@@ -76,20 +141,11 @@ def loop():
             else:
                 break
         if isinstance(res["result"], list) and len(res["result"]) > 0 and "id_str" not in res["result"][0]:
-            cur.execute("update users set error_fetching_tweets = 't' where uid = %s", (res["metadata"]["user_id"],))
+            cur.execute("update metadata set tweets_fetch_success = 'f' where uid = %s", (res["metadata"]["user_id"],))
         elif isinstance(res["result"], list):
-            cur.execute("update users set error_fetching_tweets = 'f' where uid = %s", (res["metadata"]["user_id"],))
-            cache = []
+            cur.execute("update metadata set tweets_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
             for tweet in res["result"]:
-                twid = tweet["id_str"]
-                uid = tweet["user"]["id_str"]
-                text = tweet["text"]
-                created_at = tweet["created_at"]
-                if uid not in cache:
-                    cur.execute("insert into users (uid, nest_level) values (%s, 2147483647) on conflict do nothing", (uid,))
-                    cache.append(uid)
-                cur.execute("insert into tweets (twid, uid, tweet, created_at) values (%s, %s, %s, %s)", (twid, uid, text, created_at))
-
+                insert_tweet(tweet)
                 i = i + 1
                 if i % 1000 == 0:
                     conn.commit()
