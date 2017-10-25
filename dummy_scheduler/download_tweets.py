@@ -104,9 +104,10 @@ def loop():
         print(".", end="")
         sys.stdout.flush()
         if isinstance(res["result"], list) and len(res["result"]) > 0 and "id_str" not in res["result"][0]:
-            cur.execute("update metadata set tweets_fetch_success = 'f' where uid = %s", (res["metadata"]["user_id"],))
+            #cur.execute("update metadata set tweets_fetch_success = 'f' where uid = %s", (res["metadata"]["user_id"],))
+            pass
         elif isinstance(res["result"], list):
-            cur.execute("update metadata set tweets_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
+            #cur.execute("update metadata set tweets_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
             for tweet in res["result"]:
                 insert_tweet(tweet)
         else:

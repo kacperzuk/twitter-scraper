@@ -9,11 +9,13 @@ if len(sys.argv) < 3:
     sys.exit(1)
 
 def screen_name_to_uid(screen_name):
+    print("Getting id from screenname... ", end="")
     tag = "id_of_"+screen_name
     command("get", "users/lookup", { "screen_name": screen_name }, tag)
     conn.commit()
     res = get_or_wait_for_result(tag)
     finish_result(res)
+    print("Done")
     return res["result"][0]["id"]
 
 def loop(max_nest_level):
@@ -21,12 +23,13 @@ def loop(max_nest_level):
     while new_users:
         new_users = False
         cur2 = conn.cursor()
-        cur2.execute("select uid, nest_level from metadata where followers_requested is null and nest_level < %s limit 10000", (max_nest_level,))
+        cur2.execute("update metadata set followers_requested = current_timestamp where uid in (select uid from metadata where followers_requested is null and nest_level < %s limit 1000 for update skip locked) returning uid, nest_level", (max_nest_level,))
         print("")
         print("Scheduling followers request for batch of users")
         for row in cur2:
             new_users = True
             print(".", end="")
+            sys.stdout.flush()
             cur.execute("update metadata set followers_requested = current_timestamp where uid = %s", (row[0],));
             command("get", "followers/ids",
                     { "user_id": row[0], "stringify_ids": True},
@@ -43,6 +46,7 @@ def loop(max_nest_level):
         if not res:
             break
         print(".", end="")
+        sys.stdout.flush()
 
         if "next_cursor" in res["result"] and res["result"]["next_cursor"] != 0:
             command("get", "followers/ids",
@@ -60,9 +64,9 @@ def loop(max_nest_level):
                 cur.execute("insert into followers (follower_uid, folowee_uid) values (%s, %s) on conflict (follower_uid, folowee_uid) do nothing", (follower, res["metadata"]["user_id"]))
         else:
             cur.execute("update metadata set followers_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
+            pass
         finish_result(res)
-        if i % 1000 == 0:
-            conn.commit()
+        conn.commit()
 
 
 if len(sys.argv) > 2:

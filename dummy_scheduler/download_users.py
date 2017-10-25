@@ -5,27 +5,26 @@ from common import conn, cur, get_or_wait_for_result, finish_result, command
 
 def loop():
     new_users = True
+    print("Scheduling batches of users")
     while new_users:
         new_users = False
-        print("Scheduling batches of users")
-        cur2 = conn.cursor()
-        cur2.execute("select uid from metadata where user_requested is null limit 10000")
-        for u in cur2:
+        cur = conn.cursor()
+        cur.execute("update metadata set user_requested = current_timestamp where uid in (select uid from metadata where user_requested is null limit 100 for update skip locked) returning uid")
+        users = [ u[0] for u in cur ]
+        conn.commit()
+        if users:
             print(".", end="")
-            u = u[0]
+            sys.stdout.flush()
             new_users = True
-            cur.execute("update metadata set user_requested = current_timestamp where uid = %s", (u,));
             command("post", "users/lookup",
                     { "user_id": ",".join(users)},
                     "users",
                     users)
-        conn.commit()
+            conn.commit()
 
     print("")
     print("Processing responses")
-    i = 0
     while True:
-        i += 1
         res = get_or_wait_for_result("users")
         if not res:
             break
@@ -83,6 +82,5 @@ def loop():
             if i not in successed_uids:
                 cur.execute("update metadata set user_fetch_success = 'f' where uid = %s", (u["id_str"],))
         finish_result(res)
-        if i % 1000 == 0:
-            conn.commit()
+        conn.commit()
 loop()
