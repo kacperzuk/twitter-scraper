@@ -115,7 +115,7 @@ const run = async (pg, t) => {
         });
         if(result) {
             await pg.finish_cmd(cmd, result).catch(e => console.error(e.stack))
-            console.log(new Date(), `Processed command ${JSON.stringify(cmd)}`)
+            console.log(new Date(), `Processed command ${JSON.stringify(cmd).substr(0, 140)}`)
         }
         if(error && error.some) {
             if(error.some(e => e.code == 88)) {
