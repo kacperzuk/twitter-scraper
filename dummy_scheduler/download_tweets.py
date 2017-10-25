@@ -51,6 +51,10 @@ def insert_tweet(tweet):
     if "retweeted_status" in tweet and tweet["retweeted_status"]:
         insert_tweet(tweet["retweeted_status"])
         retweet_of = tweet["retweeted_status"]["id_str"]
+    quote_of = None
+    if "quoted_status" in tweet and tweet["quoted_status"]:
+        insert_tweet(tweet["quoted_status"])
+        quote_of = tweet["quoted_status"]["id_str"]
     uid = tweet["user"]["id_str"]
     if uid not in uid_cache:
         cur.execute("insert into metadata (uid, nest_level) values (%s, 2147483647) on conflict do nothing", (uid,))
@@ -74,12 +78,13 @@ def insert_tweet(tweet):
         coordinates,
         place,
         retweet_of,
-        is_quote_status,
+        quote_of,
         retweet_count,
         favorite_count,
         possibly_sensitive,
         lang
         ) values ( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        on conflict (twid) do nothing
         """, (
             tweet["id_str"],
             uid,
@@ -93,14 +98,14 @@ def insert_tweet(tweet):
             tweet["in_reply_to_status_id"],
             tweet["in_reply_to_user_id"],
             tweet["in_reply_to_screen_name"],
-            tweet["geo"],
-            tweet["coordinates"],
-            tweet["place"],
+            json.dumps(tweet["geo"]),
+            json.dumps(tweet["coordinates"]),
+            json.dumps(tweet["place"]),
             retweet_of,
-            tweet["is_quote_status"],
+            quote_of,
             tweet["retweet_count"],
             tweet["favorite_count"],
-            tweet["possibly_sensitive"],
+            tweet.get("possibly_sensitive"),
             tweet["lang"]
         ))
     except:
