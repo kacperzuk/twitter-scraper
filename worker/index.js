@@ -27,30 +27,8 @@ function getPG() {
         maybe_connect: async () => {
             if (!pg.connected) {
                 await pg.client.connect()
-                await pg.init()
             }
             pg.connected = true
-        },
-        init: async () => {
-            await pg.client.query("create type cmd_method as enum ('get', 'post');").catch(e => {})
-            await pg.client.query(`
-            create table if not exists cmd_queue (
-                id serial primary key,
-                method cmd_method not null,
-                path text not null,
-                params json,
-                tag text not null,
-                metadata json,
-                is_processing_since timestamp,
-                tries int not null default '0'
-            );`);
-            await pg.client.query(`
-            create table if not exists res_queue (
-                id serial primary key,
-                tag text not null,
-                metadata json,
-                result json
-            );`);
         },
         fetch_from_queue: async () => {
             await pg.maybe_connect()

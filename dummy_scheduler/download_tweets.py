@@ -10,10 +10,6 @@ conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGHOST"),
     os.getenv("PGPASSWORD")))
 
-cur = conn.cursor()
-cur.execute("create table if not exists tweets ( twid varchar(100) primary key, uid varchar(100) not null, tweet text not null, created_at timestamp not null, error_fetching_tweets boolean)")
-conn.commit()
-
 def get_result_async(tag):
     cur.execute("select id, result, metadata from res_queue where tag = %s order by id for update skip locked limit 1", (tag,))
     row = cur.fetchone()

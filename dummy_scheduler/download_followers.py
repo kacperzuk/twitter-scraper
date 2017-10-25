@@ -13,11 +13,7 @@ conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGUSER"),
     os.getenv("PGHOST"),
     os.getenv("PGPASSWORD")))
-
 cur = conn.cursor()
-cur.execute("create table if not exists users ( uid varchar(100) primary key, followers_fetched timestamp, tweets_fetched timestamp, nest_level integer default 0)")
-cur.execute("create table if not exists followers ( follower_uid varchar(100) references users(uid), folowee_uid varchar(100) references users(uid), primary key(follower_uid, folowee_uid))")
-conn.commit()
 
 def screen_name_to_uid(screen_name):
     tag = "id_of_"+screen_name
@@ -63,9 +59,9 @@ def loop(max_nest_level):
     while new_users:
         new_users = False
         cur2 = conn.cursor()
-        cur2.execute("select uid, nest_level from users where followers_fetched is null and nest_level < %s", (max_nest_level,))
+        cur2.execute("select uid, nest_level from metadata where followers_requested is null and nest_level < %s", (max_nest_level,))
         for row in cur2:
-            cur.execute("update users set followers_fetched = current_timestamp where uid = %s", (row[0],));
+            cur.execute("update metadata set followers_requested = current_timestamp where uid = %s", (row[0],));
             command("get", "followers/ids",
                     { "user_id": row[0], "stringify_ids": True},
                     "followers",
@@ -81,22 +77,19 @@ def loop(max_nest_level):
                         "followers",
                         res["metadata"])
             if "ids" in res["result"]:
+                cur.execute("update metadata set followers_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
                 for follower in res["result"]["ids"]:
                     new_users = True
                     nest_level = res["metadata"]["nest_level"] + 1
-                    cur.execute("insert into users (uid, nest_level) values (%s, %s) on conflict (uid) do update set nest_level = least(users.nest_level, excluded.nest_level)", (follower, nest_level))
+                    cur.execute("insert into metadata (uid, nest_level) values (%s, %s) on conflict (uid) do update set nest_level = least(metadata.nest_level, excluded.nest_level)", (follower, nest_level))
                     cur.execute("insert into followers (follower_uid, folowee_uid) values (%s, %s) on conflict (follower_uid, folowee_uid) do nothing", (follower, res["metadata"]["user_id"]))
+            else:
+                cur.execute("update metadata set followers_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
             conn.commit()
 
 
-    print("Done.")
-    cur.execute("select count(*) from users")
-    conn.commit()
-    print("Total users in DB: %d" % (cur.fetchone()[0],))
-
-
 if len(sys.argv) > 2:
-    cur.execute("insert into users (uid) values (%s) on conflict (uid) do update set nest_level = 0", (screen_name_to_uid(sys.argv[2]),))
+    cur.execute("insert into metadata (uid) values (%s) on conflict (uid) do update set nest_level = 0", (screen_name_to_uid(sys.argv[2]),))
     conn.commit()
 
 loop(sys.argv[1])
