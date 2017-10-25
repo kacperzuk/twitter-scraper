@@ -62,18 +62,18 @@ create table tweets (
     tweet text not null,
     created_at timestamp not null,
     truncated boolean,
-    hashtags json,
-    symbols json,
-    user_mentions json,
-    urls json,
+    hashtags text,
+    symbols text,
+    user_mentions text,
+    urls text,
     in_reply_to_status_id varchar(100),
     in_reply_to_user_id varchar(100),
     in_reply_to_screen_name text,
-    geo json,
-    coordinates json,
-    place json,
-    retweet_of varchar(100) references tweets(twid),
-    quote_of varchar(100) references tweets(twid),
+    geo text,
+    coordinates text,
+    place text,
+    retweet_of varchar(100),
+    quote_of varchar(100),
     retweet_count integer,
     favorite_count integer,
     possibly_sensitive boolean,
@@ -84,9 +84,9 @@ create table cmd_queue (
     id serial primary key,
     method cmd_method not null,
     path text not null,
-    params json,
+    params text,
     tag text not null,
-    metadata json,
+    metadata text,
     is_processing_since timestamp,
     tries int not null default '0'
 )""")
@@ -94,7 +94,8 @@ cur.execute("""
 create table res_queue (
     id serial primary key,
     tag text not null,
-    metadata json,
-    result json
+    metadata text,
+    is_processing_since timestamp,
+    result text
 )""")
 conn.commit()

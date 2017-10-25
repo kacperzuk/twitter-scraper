@@ -1,75 +1,37 @@
-import psycopg2
 import time
 import json
-import os
 import sys
-
-conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
-    os.getenv("PGDATABASE"),
-    os.getenv("PGUSER"),
-    os.getenv("PGHOST"),
-    os.getenv("PGPASSWORD")))
-
-cur = conn.cursor()
-
-def get_result_async(tag):
-    cur.execute("select id, result, metadata from res_queue where tag = %s order by id for update skip locked limit 1", (tag,))
-    row = cur.fetchone()
-    if row:
-        cur.execute("delete from res_queue where id = %s", (row[0],))
-    conn.commit()
-    if row:
-        return { "result": row[1], "metadata": row[2] }
-    return None
-
-def get_result_sync(tag):
-    print("Waiting for res tag=%s" % tag)
-    result = None
-    while not result:
-        result = get_result_async(tag)
-        if not result:
-            time.sleep(0.1)
-    return result
-
-def command(method, path, params, tag, metadata=None):
-    cur.execute("insert into cmd_queue (method, path, params, tag, metadata) values (%s, %s, %s, %s, %s)", (method, path, json.dumps(params), tag, json.dumps(metadata)))
-
-def commands_in_queue(tag):
-    cur.execute("select 1 from cmd_queue where tag = %s limit 1", (tag,))
-    conn.commit()
-    return bool(cur.fetchone())
-
-def results_in_queue(tag):
-    cur.execute("select 1 from res_queue where tag = %s limit 1", (tag,))
-    conn.commit()
-    return bool(cur.fetchone())
+from common import conn, cur, get_or_wait_for_result, finish_result, command
 
 def loop():
     new_users = True
     while new_users:
         new_users = False
-        cur.execute("select uid from metadata where user_requested is null for update skip locked limit 100")
-        users = [ r[0] for r in cur.fetchall() ]
-        if users:
+        print("Scheduling batches of users")
+        cur2 = conn.cursor()
+        cur2.execute("select uid from metadata where user_requested is null limit 10000")
+        for u in cur2:
+            print(".", end="")
+            u = u[0]
             new_users = True
-            for u in users:
-                cur.execute("update metadata set user_requested = current_timestamp where uid = %s", (u,));
+            cur.execute("update metadata set user_requested = current_timestamp where uid = %s", (u,));
             command("post", "users/lookup",
                     { "user_id": ",".join(users)},
                     "users",
                     users)
         conn.commit()
 
+    print("")
+    print("Processing responses")
+    i = 0
     while True:
+        i += 1
+        res = get_or_wait_for_result("users")
+        if not res:
+            break
         print(".", end="")
         sys.stdout.flush()
-        res = get_result_async("users")
-        if not res:
-            print("")
-            if commands_in_queue("users") or results_in_queue("users"):
-                res = get_result_sync("users")
-            else:
-                break
+
         successed_uids = []
         for u in res["result"]:
             successed_uids.append(u["id_str"])
@@ -120,5 +82,7 @@ def loop():
         for i in res["metadata"]:
             if i not in successed_uids:
                 cur.execute("update metadata set user_fetch_success = 'f' where uid = %s", (u["id_str"],))
-        conn.commit()
+        finish_result(res)
+        if i % 1000 == 0:
+            conn.commit()
 loop()

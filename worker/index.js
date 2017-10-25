@@ -62,7 +62,7 @@ function getPG() {
             await pg.maybe_connect()
             await pg.client.query('begin')
             try {
-                await pg.client.query(`insert into res_queue (tag, result, metadata) values ($1, $2, $3)`, [cmd.tag, JSON.stringify(result), JSON.stringify(cmd.metadata)])
+                await pg.client.query(`insert into res_queue (tag, result, metadata) values ($1, $2, $3)`, [cmd.tag, JSON.stringify(result), cmd.metadata])
                 await pg.client.query('delete from cmd_queue where id = $1', [cmd.id]);
                 await pg.client.query('commit')
             } catch(e) {
@@ -106,6 +106,7 @@ const run = async (pg, t) => {
     const cmd = await pg.fetch_from_queue()
     let error;
     if(cmd) {
+        cmd.params = JSON.parse(cmd.params)
         const result = await t[cmd.method](cmd.path, cmd.params).catch((err) => {
             console.log(new Date(), "Failure!")
             console.log("cmd: ", cmd)
@@ -129,6 +130,8 @@ const run = async (pg, t) => {
                 }, 60*1000)
             } else if(error.some(e => e.code == 34)) {
                 await pg.finish_cmd(cmd, error[0]);
+            } else {
+                await pg.cancel_cmd(cmd)
             }
         } else if (error && error.name == "Error") {
             await pg.finish_cmd(cmd, { error: "unauthorized" });
