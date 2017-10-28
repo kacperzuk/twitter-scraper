@@ -1,7 +1,14 @@
 import psycopg2
 import json
+import pika
 import time
 import os
+
+params = pika.URLParameters("amqp://127.0.0.1:32769")
+connection = pika.BlockingConnection(params)
+jobs = connection.channel() # start a channel
+jobs.queue_declare(queue='jobs', durable=True) # Declare a queue
+responses = connection.channel()
 
 conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGDATABASE"),
@@ -10,33 +17,29 @@ conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGPASSWORD")))
 cur = conn.cursor()
 
-def get_result_async(tag):
-    cur.execute("select id, result, metadata from res_queue where tag = %s and is_processing_since is null order by id limit 1 for update skip locked", (tag,))
-    row = cur.fetchone()
-    if row:
-        cur.execute("update res_queue set is_processing_since = current_timestamp where id = %s", (row[0],))
-        return { "id": row[0], "result": json.loads(row[1]), "metadata": json.loads(row[2]) }
-    return None
-
-def finish_result(res):
-    cur.execute("delete from res_queue where id = %s", (res["id"],))
-
-def get_or_wait_for_result(tag):
-    res = get_result_async(tag)
-    if res:
-        return res
-
-    while True:
-        cur.execute("(select 1 from cmd_queue where tag = %(tag)s limit 1) union (select 1 from res_queue where is_processing_since = null and tag = %(tag)s limit 1)", { "tag": tag })
-        if cur.fetchone():
-            time.sleep(0.01)
-            res = get_result_async(tag)
-            if res:
-                return res
-        else:
-            break
-
-    return None
-
 def command(method, path, params, tag, metadata=None):
-    cur.execute("insert into cmd_queue (method, path, params, tag, metadata) values (%s, %s, %s, %s, %s)", (method, path, json.dumps(params), tag, json.dumps(metadata)))
+    global jobs
+    cmd = json.dumps({
+        "method": method,
+        "path": path,
+        "params": params,
+        "tag": tag,
+        "metadata": metadata
+    })
+    jobs.basic_publish(exchange='',
+            routing_key='jobs',
+            body=cmd)
+
+def get_response(tag):
+    responses.queue_declare(queue='responses_'+tag, durable=True)
+    while True:
+        isok, properties, resp = responses.basic_get("responses_"+tag)
+        if isok:
+            return isok, json.loads(resp)
+        time.sleep(0.01)
+
+def ack_response(meta):
+    responses.basic_ack(meta.delivery_tag)
+
+def nack_response(meta):
+    responses.basic_nack(meta.delivery_tag)

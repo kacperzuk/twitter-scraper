@@ -9,8 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "amqplib": "^0.5.1",
     "oauth": "^0.9.15",
-    "pg": "^7.3.0",
     "twitter": "^1.7.1"
   }
 }

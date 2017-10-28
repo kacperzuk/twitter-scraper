@@ -1,7 +1,7 @@
 import time
 import json
 import sys
-from common import conn, cur, get_or_wait_for_result, finish_result, command
+from common import conn, cur, get_response, ack_response, nack_response, command
 
 def loop():
     new_users = True
@@ -25,7 +25,7 @@ def loop():
     print("")
     print("Processing responses")
     while True:
-        res = get_or_wait_for_result("users")
+        meta, res = get_response("users")
         if not res:
             break
         print(".", end="")
@@ -33,6 +33,8 @@ def loop():
 
         successed_uids = []
         for u in res["result"]:
+            if u == "error":
+                continue
             successed_uids.append(u["id_str"])
             cur.execute("update metadata set user_fetch_success = 't' where uid = %s", (u["id_str"],))
             cur.execute("""
@@ -78,9 +80,11 @@ def loop():
                 u["friends_count"],
                 u["screen_name"]
             ))
+            conn.commit()
         for i in res["metadata"]:
             if i not in successed_uids:
-                cur.execute("update metadata set user_fetch_success = 'f' where uid = %s", (u["id_str"],))
-        finish_result(res)
+                cur.execute("update metadata set user_fetch_success = 'f' where uid = %s", (i,))
+                conn.commit()
+        ack_response(meta)
         conn.commit()
 loop()

@@ -2,7 +2,7 @@ import time
 import json
 import sys
 
-from common import conn, cur, get_or_wait_for_result, command, finish_result
+from common import conn, cur, get_response, command, ack_response, nack_response
 
 if len(sys.argv) < 3:
     print("Provide max_nest_level and screen_name to scan for.")
@@ -10,11 +10,12 @@ if len(sys.argv) < 3:
 
 def screen_name_to_uid(screen_name):
     print("Getting id from screenname... ", end="")
+    sys.stdout.flush()
     tag = "id_of_"+screen_name
     command("get", "users/lookup", { "screen_name": screen_name }, tag)
     conn.commit()
-    res = get_or_wait_for_result(tag)
-    finish_result(res)
+    meta, res = get_response(tag)
+    ack_response(meta)
     print("Done")
     return res["result"][0]["id"]
 
@@ -41,7 +42,7 @@ def loop(max_nest_level):
     print("Processing responses...")
     i = 0
     while True:
-        res = get_or_wait_for_result("followers")
+        meta, res = get_response("followers")
         i += 1
         if not res:
             break
@@ -65,7 +66,7 @@ def loop(max_nest_level):
         else:
             cur.execute("update metadata set followers_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
             pass
-        finish_result(res)
+        ack_response(meta)
         conn.commit()
 
 

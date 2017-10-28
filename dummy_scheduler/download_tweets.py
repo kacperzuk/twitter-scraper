@@ -1,7 +1,7 @@
 import time
 import json
 import sys
-from common import conn, cur, get_or_wait_for_result, command, finish_result
+from common import conn, cur, get_response, command, ack_response, nack_response
 
 uid_cache = []
 def insert_tweet(tweet):
@@ -18,6 +18,7 @@ def insert_tweet(tweet):
     if uid not in uid_cache:
         cur.execute("insert into metadata (uid, nest_level) values (%s, 2147483647) on conflict do nothing", (uid,))
         uid_cache.append(uid)
+        conn.commit()
     try:
         cur.execute("""
         insert into tweets (
@@ -77,7 +78,7 @@ def loop():
     while scheduled:
         scheduled = False
         cur2 = conn.cursor()
-        cur2.execute("select uid from metadata where tweets_requested is null limit 10000")
+        cur2.execute("select uid from metadata where tweets_requested is null limit 100 for update")
         print("")
         print("Scheduling downloads for batch of users...")
         for u in cur2:
@@ -95,27 +96,27 @@ def loop():
     print("")
     print("Processing tweets...")
     conn.commit()
-    i = 0
     while True:
-        i += 1
-        res = get_or_wait_for_result("tweets")
+        meta, res = get_response("tweets")
         if not res:
             break
         print(".", end="")
         sys.stdout.flush()
+        if "result" not in res:
+            ack_response(meta)
+            continue
         if isinstance(res["result"], list) and len(res["result"]) > 0 and "id_str" not in res["result"][0]:
-            #cur.execute("update metadata set tweets_fetch_success = 'f' where uid = %s", (res["metadata"]["user_id"],))
+            cur.execute("update metadata set tweets_fetch_success = 'f' where uid = %s", (res["metadata"]["user_id"],))
             pass
         elif isinstance(res["result"], list):
-            #cur.execute("update metadata set tweets_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
+            cur.execute("update metadata set tweets_fetch_success = 't' where uid = %s", (res["metadata"]["user_id"],))
             for tweet in res["result"]:
                 insert_tweet(tweet)
         else:
             with open("log", "w") as f:
                 f.write("Oddity found for tweets response: "+json.dumps(res))
-        finish_result(res)
-        if i % 100 == 0:
-            conn.commit()
+        ack_response(meta)
+        conn.commit()
     conn.commit()
 
 loop()

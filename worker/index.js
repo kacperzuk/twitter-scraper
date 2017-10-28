@@ -1,6 +1,91 @@
-const { Client } = require('pg')
 const Twitter = require('twitter')
+const amqp = require('amqplib/callback_api');
 
+var amqpConn = null;
+var pubChannel = null;
+function start() {
+  amqp.connect("amqp://127.0.0.1:32769?heartbeat=60", async function(err, conn) {
+    if (err) {
+      console.error("[AMQP]", err.message);
+      return setTimeout(start, 1000);
+    }
+    conn.on("error", function(err) {
+      if (err.message !== "Connection closing") {
+        console.error("[AMQP] conn error", err.message);
+      }
+    });
+    conn.on("close", function() {
+      console.error("[AMQP] reconnecting");
+      return setTimeout(start, 1000);
+    });
+    console.log("[AMQP] connected");
+    amqpConn = conn;
+    await startPublisher();
+    startWorker();
+  });
+}
+
+async function startPublisher() {
+    return new Promise((resolve, reject) => {
+        amqpConn.createConfirmChannel(function(err, ch) {
+            if (closeOnErr(err)) return;
+            ch.on("error", function(err) {
+                console.error("[AMQP] channel error", err.message);
+                reject()
+            });
+            ch.on("close", function() {
+                console.log("[AMQP] channel closed");
+                reject()
+            });
+
+            pubChannel = ch;
+            resolve();
+        });
+    })
+}
+
+// A worker that acks messages only if processed succesfully
+function startWorker() {
+  amqpConn.createChannel(function(err, ch) {
+    if (closeOnErr(err)) return;
+    ch.on("error", function(err) {
+      console.error("[AMQP] channel error", err.message);
+    });
+
+    ch.on("close", function() {
+      console.log("[AMQP] channel closed");
+    });
+
+    ch.prefetch(1);
+    ch.assertQueue("jobs", { durable: true }, function(err, _ok) {
+      if (closeOnErr(err)) return;
+      ch.consume("jobs", processMsg, { noAck: false });
+    });
+    ch.assertQueue("responses", { durable: true }, function(err, _ok) {
+      if (closeOnErr(err)) return;
+    });
+
+    function processMsg(msg) {
+      work(msg, function(ok) {
+        try {
+          if (ok)
+            ch.ack(msg);
+          else
+            ch.reject(msg, true);
+        } catch (e) {
+          closeOnErr(e);
+        }
+      });
+    }
+  });
+}
+
+function closeOnErr(err) {
+  if (!err) return false;
+  console.error("[AMQP] error", err);
+  amqpConn.close();
+  return true;
+}
 
 function getBearerToken() {
     const oauth2 = new (require('oauth').OAuth2)(
@@ -16,63 +101,6 @@ function getBearerToken() {
             else resolve(access_token)
         });
     });
-}
-
-const ratelimited = {};
-
-function getPG() {
-    const pg = {
-        client: new Client(),
-        connected: false,
-        maybe_connect: async () => {
-            if (!pg.connected) {
-                await pg.client.connect()
-            }
-            pg.connected = true
-        },
-        fetch_from_queue: async () => {
-            await pg.maybe_connect()
-            const placeholders = Object.keys(ratelimited).map((v,i) => `$${i+1}`).join(", ");
-            const tagfilter = placeholders ? `and tag not in (${placeholders})` : "";
-            const res = await pg.client.query(`
-                update cmd_queue
-                set
-                    is_processing_since = current_timestamp,
-                    tries = tries + 1
-                where id = (
-                    select id
-                    from cmd_queue
-                    where is_processing_since is null
-                        ${tagfilter}
-                    order by id
-                    for update skip locked
-                    limit 1
-                )
-                returning id, method, path, params, tag, metadata
-            `, Object.keys(ratelimited))
-            if (res.rows.length)
-                return res.rows[0]
-            return null
-        },
-        cancel_cmd: async (cmd) => {
-            await pg.maybe_connect()
-            await pg.client.query('update cmd_queue set is_processing_since = null where id = $1', [cmd.id]);
-        },
-        finish_cmd: async (cmd, result) => {
-            await pg.maybe_connect()
-            await pg.client.query('begin')
-            try {
-                await pg.client.query(`insert into res_queue (tag, result, metadata) values ($1, $2, $3)`, [cmd.tag, JSON.stringify(result), cmd.metadata])
-                await pg.client.query('delete from cmd_queue where id = $1', [cmd.id]);
-                await pg.client.query('commit')
-            } catch(e) {
-                await pg.client.query('rollback')
-                await pg.cancel_cmd(cmd)
-                throw e
-            }
-        }
-    }
-    return pg;
 }
 
 function gett() {
@@ -96,52 +124,49 @@ function gett() {
     return t;
 }
 
-const run = async (pg, t) => {
-    if(!pg) {
-        pg = getPG();
-    }
-    if(!t) {
-        t = gett();
-    }
-    const cmd = await pg.fetch_from_queue()
-    let error;
-    if(cmd) {
-        cmd.params = JSON.parse(cmd.params)
-        const result = await t[cmd.method](cmd.path, cmd.params).catch((err) => {
-            console.log(new Date(), "Failure!")
-            console.log("cmd: ", cmd)
-            console.log(err)
-            console.log(err.name)
-            error = err
-        });
-        if(result) {
-            await pg.finish_cmd(cmd, result).catch(e => console.error(e.stack))
-            console.log(new Date(), `Processed command ${JSON.stringify(cmd).substr(0, 140)}`)
-        }
-        if(error && error.some) {
-            if(error.some(e => e.code == 88)) {
-                console.warn(new Date(), "Got rate limit error, ignoring tag "+cmd.tag+" for 1 minute...")
-                await pg.cancel_cmd(cmd)
-                ratelimited[cmd.tag] = true;
-                setTimeout(() => {
-                    if (cmd.tag in ratelimited) {
-                        delete ratelimited[cmd.tag];
-                    }
-                }, 60*1000)
-            } else if(error.some(e => e.code == 34)) {
-                await pg.finish_cmd(cmd, error[0]);
-            } else {
-                await pg.cancel_cmd(cmd)
+const t = gett();
+
+function send_response(cmd, result) {
+    console.log(new Date(), "Processed command: ", JSON.stringify(cmd).substr(0, 80))
+    const resp = { metadata: cmd.metadata, tag: cmd.tag, result }
+    pubChannel.publish("", "responses_"+resp.tag, new Buffer(JSON.stringify(resp)), { persistent: true },
+        function(err, ok) {
+            if (err) {
+                console.error("[AMQP] publish", err);
             }
-        } else if (error && error.name == "Error") {
-            await pg.finish_cmd(cmd, { error: "unauthorized" });
-        }
-        setImmediate(run.bind(null, pg, t))
-    } else {
-        setTimeout(run.bind(null, pg, t), 100)
-    }
+        });
 }
 
-run()
-run()
-run()
+async function work(msg, cb) {
+    cmd = JSON.parse(msg.content.toString());
+    let error;
+    const result = await t[cmd.method](cmd.path, cmd.params).catch((err) => {
+        console.log(new Date(), "Failure!")
+        console.log("cmd: ", cmd)
+        console.log(err)
+        console.log(err.name)
+        error = err
+    });
+    if(result) {
+        send_response(cmd, result)
+    }
+    if(error && error.some) {
+        if(error.some(e => e.code == 88)) {
+            console.warn(new Date(), "Got rate limit error, sleeping for minute...")
+            setTimeout(() => {
+                cb(false)
+            }, 60*1000)
+            return
+        } else if(error.some(e => e.code == 34)) {
+            send_response(cmd, error[0])
+        } else {
+            cb(false)
+            return
+        }
+    } else if (error && error.name == "Error") {
+        send_response(cmd, result)
+    }
+    cb(true)
+}
+
+start()

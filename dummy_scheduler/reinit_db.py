@@ -12,10 +12,6 @@ cur.execute("drop table if exists users")
 cur.execute("drop table if exists metadata")
 cur.execute("drop table if exists tweets")
 cur.execute("drop table if exists followers")
-cur.execute("drop table if exists cmd_queue")
-cur.execute("drop table if exists res_queue")
-cur.execute("drop type if exists cmd_method")
-cur.execute("create type cmd_method as enum ('get', 'post');")
 cur.execute("""
 create table metadata (
     uid varchar(100) primary key,
@@ -78,24 +74,5 @@ create table tweets (
     favorite_count integer,
     possibly_sensitive boolean,
     lang text
-)""")
-cur.execute("""
-create table cmd_queue (
-    id serial primary key,
-    method cmd_method not null,
-    path text not null,
-    params text,
-    tag text not null,
-    metadata text,
-    is_processing_since timestamp,
-    tries int not null default '0'
-)""")
-cur.execute("""
-create table res_queue (
-    id serial primary key,
-    tag text not null,
-    metadata text,
-    is_processing_since timestamp,
-    result text
 )""")
 conn.commit()
