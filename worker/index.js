@@ -44,9 +44,11 @@ async function startPublisher() {
     })
 }
 
+gch = null;
 // A worker that acks messages only if processed succesfully
 function startWorker() {
   amqpConn.createChannel(function(err, ch) {
+    gch = ch;
     if (closeOnErr(err)) return;
     ch.on("error", function(err) {
       console.error("[AMQP] channel error", err.message);
@@ -59,7 +61,7 @@ function startWorker() {
     ch.prefetch(1);
     ch.assertQueue("jobs", { durable: true }, function(err, _ok) {
       if (closeOnErr(err)) return;
-      ch.consume("jobs", processMsg, { noAck: false });
+      ch.consume("jobs", processMsg, { noAck: false, consumerTag: "jobs" });
     });
     ch.assertQueue("responses", { durable: true }, function(err, _ok) {
       if (closeOnErr(err)) return;
@@ -153,8 +155,10 @@ async function work(msg, cb) {
     if(error && error.some) {
         if(error.some(e => e.code == 88)) {
             console.warn(new Date(), "Got rate limit error, sleeping for minute...")
+            cb(false)
+            gch.cancel("jobs")
             setTimeout(() => {
-                cb(false)
+                gch.consume("jobs", processMsg, { noAck: false, consumerTag: "jobs" });
             }, 60*1000)
             return
         } else if(error.some(e => e.code == 34)) {
