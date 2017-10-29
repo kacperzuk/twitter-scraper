@@ -1,10 +1,11 @@
 const Twitter = require('twitter')
-const amqp = require('amqplib/callback_api');
+const amqp = require('amqplib/callback_api')
+const tags = ["tweets", "users", "followers"]
 
 var amqpConn = null;
 var pubChannel = null;
 function start() {
-  amqp.connect("amqp://127.0.0.1:32769?heartbeat=60", async function(err, conn) {
+  amqp.connect(process.env.AMQP_CONN_STRING+"?heartbeat=60", async function(err, conn) {
     if (err) {
       console.error("[AMQP]", err.message);
       return setTimeout(start, 1000);
@@ -59,25 +60,25 @@ function startWorker() {
     });
 
     ch.prefetch(1);
-    ch.assertQueue("jobs", { durable: true }, function(err, _ok) {
-      if (closeOnErr(err)) return;
-      ch.consume("jobs", processMsg, { noAck: false, consumerTag: "jobs" });
+    tags.forEach((t) => {
+        ch.assertQueue("jobs_"+t, { durable: true }, function(err, _ok) {
+            if (closeOnErr(err)) return;
+            console.log("consume "+t)
+            ch.consume("jobs_"+t, processMsg, { noAck: false });
+        });
     });
-    ch.assertQueue("responses", { durable: true }, function(err, _ok) {
-      if (closeOnErr(err)) return;
-    });
+  });
+}
 
-    function processMsg(msg) {
-      work(msg, function(ok) {
-        try {
-          if (ok)
-            ch.ack(msg);
-          else
-            ch.reject(msg, true);
-        } catch (e) {
-          closeOnErr(e);
-        }
-      });
+function processMsg(msg) {
+  work(msg, function(ok) {
+    try {
+      if (ok)
+        gch.ack(msg);
+      else
+        gch.reject(msg, true);
+    } catch (e) {
+      closeOnErr(e);
     }
   });
 }
@@ -131,7 +132,7 @@ const t = gett();
 function send_response(cmd, result) {
     console.log(new Date(), "Processed command: ", JSON.stringify(cmd).substr(0, 80))
     const resp = { metadata: cmd.metadata, tag: cmd.tag, result }
-    pubChannel.publish("", "responses_"+resp.tag, new Buffer(JSON.stringify(resp)), { persistent: true },
+    pubChannel.publish("", "responses_"+cmd.tag, new Buffer(JSON.stringify(resp)), { persistent: true },
         function(err, ok) {
             if (err) {
                 console.error("[AMQP] publish", err);
@@ -140,7 +141,7 @@ function send_response(cmd, result) {
 }
 
 async function work(msg, cb) {
-    cmd = JSON.parse(msg.content.toString());
+    let cmd = JSON.parse(msg.content.toString());
     let error;
     const result = await t[cmd.method](cmd.path, cmd.params).catch((err) => {
         console.log(new Date(), "Failure!")
@@ -155,10 +156,10 @@ async function work(msg, cb) {
     if(error && error.some) {
         if(error.some(e => e.code == 88)) {
             console.warn(new Date(), "Got rate limit error, sleeping for minute...")
+            gch.cancel(msg.fields.consumerTag)
             cb(false)
-            gch.cancel("jobs")
             setTimeout(() => {
-                gch.consume("jobs", processMsg, { noAck: false, consumerTag: "jobs" });
+                gch.consume("jobs_"+cmd.tag, processMsg, { noAck: false });
             }, 60*1000)
             return
         } else if(error.some(e => e.code == 34)) {
@@ -168,7 +169,7 @@ async function work(msg, cb) {
             return
         }
     } else if (error && error.name == "Error") {
-        send_response(cmd, result)
+        send_response(cmd, error)
     }
     cb(true)
 }

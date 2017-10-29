@@ -4,10 +4,10 @@ import pika
 import time
 import os
 
-params = pika.URLParameters("amqp://127.0.0.1:32769")
+params = pika.URLParameters(os.getenv("AMQP_CONN_STRING"))
 connection = pika.BlockingConnection(params)
 jobs = connection.channel() # start a channel
-jobs.queue_declare(queue='jobs', durable=True) # Declare a queue
+agg = connection.channel() # start a channel
 responses = connection.channel()
 
 conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
@@ -26,12 +26,27 @@ def command(method, path, params, tag, metadata=None):
         "tag": tag,
         "metadata": metadata
     })
+    responses.queue_declare(queue='responses_'+tag, durable=True, auto_delete=False)
+    jobs.queue_declare(queue='jobs_'+tag, durable=True) # Declare a queue
     jobs.basic_publish(exchange='',
-            routing_key='jobs',
+            routing_key='jobs_'+tag,
             body=cmd)
 
+def aggregate(tag, param):
+    n = agg.queue_declare(queue='agg', durable=True).method.message_count
+    agg.basic_publish(exchange='', routing_key='agg_'+tag, body=param)
+    return n+1
+
+def get_aggregate(tag, n):
+    ret = []
+    for i in range(n):
+        isok, properties, resp = agg.basic_get("agg"+tag)
+        ret.append(resp)
+        agg.basic_ack(isok.delivery_tag)
+    return ret
+
 def get_response(tag):
-    responses.queue_declare(queue='responses_'+tag, durable=True)
+    responses.queue_declare(queue='responses_'+tag, durable=True, auto_delete=False)
     while True:
         isok, properties, resp = responses.basic_get("responses_"+tag)
         if isok:

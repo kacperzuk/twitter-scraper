@@ -15,12 +15,8 @@ cur.execute("drop table if exists followers")
 cur.execute("""
 create table metadata (
     uid varchar(100) primary key,
-    followers_requested timestamp,
-    followers_fetch_success boolean,
-    tweets_requested timestamp,
-    tweets_fetch_success boolean,
-    user_requested timestamp,
-    user_fetch_success boolean,
+    follower_of varchar(100),
+    top_level_followee varchar(100),
     nest_level integer not null default 0
 )""")
 cur.execute("""
