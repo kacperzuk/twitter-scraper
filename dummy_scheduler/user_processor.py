@@ -54,10 +54,8 @@ def handle_users_response(response):
     return True
 
 while True:
-    print("Waiting for response...")
     meta, resp = get_response("users")
     sys.stdout.flush()
-    print("Processing response...")
 
     success = False
     try:
