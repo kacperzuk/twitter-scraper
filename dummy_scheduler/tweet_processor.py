@@ -5,6 +5,8 @@ import sys
 from common import conn, cur, get_response, command, ack_response, nack_response
 
 def insert_tweet(tweet):
+    if "code" in result and result["code"] == 34: # page does not exist
+        return
     retweet_of = None
     if "retweeted_status" in tweet and tweet["retweeted_status"]:
         insert_tweet(tweet["retweeted_status"])
