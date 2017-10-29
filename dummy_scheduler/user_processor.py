@@ -6,6 +6,9 @@ from common import conn, cur, get_response, ack_response, nack_response
 from process_user import process_user
 
 def handle_users_response(response):
+    def s(string):
+        return string.translate({ 0: None })
+
     for u in response["result"]:
         cur.execute("""
             insert into users (
@@ -30,9 +33,9 @@ def handle_users_response(response):
                 screen_name
             ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) on conflict (uid) do nothing
         """, (
-            u["id_str"],
-            u["name"],
-            u["profile_image_url"],
+            s(u["id_str"]),
+            s(u["name"]),
+            s(u["profile_image_url"]),
             u["location"],
             u["created_at"],
             u["favourites_count"],
@@ -42,13 +45,13 @@ def handle_users_response(response):
             u["followers_count"],
             u["protected"],
             u["geo_enabled"],
-            u["description"],
+            s(u["description"]),
             u["verified"],
             u["notifications"],
             u["time_zone"],
             u["statuses_count"],
             u["friends_count"],
-            u["screen_name"]
+            s(u["screen_name"])
         ))
     conn.commit()
     return True
