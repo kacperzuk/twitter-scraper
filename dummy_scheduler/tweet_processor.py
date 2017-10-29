@@ -5,8 +5,6 @@ import sys
 from common import conn, cur, get_response, command, ack_response, nack_response
 
 def insert_tweet(tweet):
-    if "code" in result and result["code"] == 34: # page does not exist
-        return
     retweet_of = None
     if "retweeted_status" in tweet and tweet["retweeted_status"]:
         insert_tweet(tweet["retweeted_status"])
@@ -66,8 +64,13 @@ def insert_tweet(tweet):
     ))
 
 def handle_tweets_response(resp):
-    for tweet in resp["result"]:
-        insert_tweet(tweet)
+    if isinstance(resp["result"], list):
+        for tweet in resp["result"]:
+            insert_tweet(tweet)
+    elif "code" in resp["result"] and resp["result"]["code"] == 34: # page does not exist
+        pass
+    else:
+        raise Exception("Unknown format.")
     conn.commit()
     return True
 
