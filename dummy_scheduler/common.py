@@ -41,7 +41,7 @@ def get_aggregate(tag, n):
     ret = []
     for i in range(n):
         isok, properties, resp = agg.basic_get("agg_"+tag)
-        ret.append(resp)
+        ret.append(str(resp))
         agg.basic_ack(isok.delivery_tag)
     return ret
 
