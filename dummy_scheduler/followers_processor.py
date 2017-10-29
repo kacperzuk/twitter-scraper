@@ -34,6 +34,7 @@ while True:
     try:
         if resp["tag"] == "followers":
             print("f", end="")
+            sys.stdout.flush()
             success = handle_followers_response(resp)
         else:
             raise Exception("Unexpected tag")

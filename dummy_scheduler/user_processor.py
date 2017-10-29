@@ -64,6 +64,7 @@ while True:
     try:
         if resp["tag"] == "users":
             print("u", end="")
+            sys.stdout.flush()
             success = handle_users_response(resp)
         else:
             raise Exception("Unexpected tag")

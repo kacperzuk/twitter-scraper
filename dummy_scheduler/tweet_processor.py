@@ -84,6 +84,7 @@ while True:
     try:
         if resp["tag"] == "tweets":
             print("t", end="")
+            sys.stdout.flush()
             success = handle_tweets_response(resp)
         else:
             raise Exception("Unexpected tag")
