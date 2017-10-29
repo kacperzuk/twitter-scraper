@@ -69,6 +69,8 @@ def handle_tweets_response(resp):
             insert_tweet(tweet)
     elif "code" in resp["result"] and resp["result"]["code"] == 34: # page does not exist
         pass
+    elif not resp["result"]:
+        pass
     else:
         raise Exception("Unknown format.")
     conn.commit()
