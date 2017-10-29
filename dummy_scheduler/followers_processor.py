@@ -18,7 +18,7 @@ def handle_followers_response(res):
 
     for follower in res["result"]["ids"]:
         nest_level = res["metadata"]["nest_level"] + 1
-        process_user(follower, res["metadata"]["user_id"], res["metadata"]["top_level_followee"], nest_level, nest_level <= int(sys.argv[1]))
+        process_user(follower, res["metadata"]["user_id"], res["metadata"]["top_level_followee"], nest_level, nest_level >= int(sys.argv[1]))
     conn.commit()
     return True
 
