@@ -33,14 +33,14 @@ def command(method, path, params, tag, metadata=None):
             body=cmd)
 
 def aggregate(tag, param):
-    n = agg.queue_declare(queue='agg', durable=True).method.message_count
+    n = agg.queue_declare(queue='agg_'+tag, durable=True).method.message_count
     agg.basic_publish(exchange='', routing_key='agg_'+tag, body=param)
     return n+1
 
 def get_aggregate(tag, n):
     ret = []
     for i in range(n):
-        isok, properties, resp = agg.basic_get("agg"+tag)
+        isok, properties, resp = agg.basic_get("agg_"+tag)
         ret.append(resp)
         agg.basic_ack(isok.delivery_tag)
     return ret
