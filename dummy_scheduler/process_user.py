@@ -7,7 +7,7 @@ def process_user(uid, follower_of=None, top_level_followee=None, nest_level=0, f
         cur.execute("insert into followers (follower_uid, folowee_uid) values (%s, %s) on conflict (follower_uid, folowee_uid) do nothing", (uid, follower_of))
     if aggregate("users", uid) >= 100:
         users = get_aggregate("users", 100)
-        command("post", "users/lookup", { "user_id": ",".join(users) })
+        command("post", "users/lookup", { "user_id": ",".join(users) }, "users")
     command("get", "followers/ids",
             { "user_id": uid, "stringify_ids": True },
             "followers",
