@@ -153,7 +153,14 @@ async function work(msg, cb) {
     if(result) {
         send_response(cmd, result)
     }
-    if(error && error.some) {
+    if(error && error.code) {
+        let c = error.code
+        if (c == "ECONNRESET" || c == "ENOTFOUND") {
+            console.warn(new Date(), "Connection problem.")
+            cb(false)
+            return
+        }
+    } else if(error && error.some) {
         if(error.some(e => e.code == 88)) {
             console.warn(new Date(), "Got rate limit error, sleeping for minute...")
             gch.cancel(msg.fields.consumerTag)
