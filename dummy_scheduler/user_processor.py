@@ -2,13 +2,10 @@ import time
 import json
 import sys
 
-from common import conn, cur, get_response, ack_response, nack_response
+from common import conn, cur, get_response, ack_response, nack_response, s
 from process_user import process_user
 
 def handle_users_response(response):
-    def s(string):
-        return string.translate({ 0: None })
-
     for u in response["result"]:
         cur.execute("""
             insert into users (

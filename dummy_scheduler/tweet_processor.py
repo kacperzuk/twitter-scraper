@@ -2,7 +2,7 @@ import time
 import json
 import sys
 
-from common import conn, cur, get_response, command, ack_response, nack_response
+from common import conn, cur, get_response, command, ack_response, nack_response, s
 
 def insert_tweet(tweet):
     retweet_of = None
@@ -42,7 +42,7 @@ def insert_tweet(tweet):
     """, (
         tweet["id_str"],
         uid,
-        tweet["text"],
+        s(tweet["text"]),
         tweet["created_at"],
         tweet["truncated"],
         json.dumps(tweet["entities"]["hashtags"]),

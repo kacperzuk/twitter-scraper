@@ -17,6 +17,9 @@ conn = psycopg2.connect("dbname=%s user=%s host=%s password=%s" % (
     os.getenv("PGPASSWORD")))
 cur = conn.cursor()
 
+def s(string):
+    return string.translate({ 0: None })
+
 def command(method, path, params, tag, metadata=None):
     global jobs
     cmd = json.dumps({
