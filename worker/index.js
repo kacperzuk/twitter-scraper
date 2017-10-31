@@ -155,7 +155,7 @@ async function work(msg, cb) {
     }
     if(error && error.code) {
         let c = error.code
-        if (c == "ECONNRESET" || c == "ENOTFOUND") {
+        if (c == "ECONNRESET" || c == "ENOTFOUND" || c == "EMFILE") {
             console.warn(new Date(), "Connection problem.")
             cb(false)
             return
