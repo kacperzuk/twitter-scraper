@@ -61,7 +61,7 @@ function startWorker() {
 
     ch.prefetch(1);
     tags.forEach((t) => {
-        ch.assertQueue("jobs_"+t, { durable: true }, function(err, _ok) {
+        ch.assertQueue("jobs_"+t, { durable: true, auto_delete: false }, function(err, _ok) {
             if (closeOnErr(err)) return;
             console.log("consume "+t)
             ch.consume("jobs_"+t, processMsg, { noAck: false });

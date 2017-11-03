@@ -30,13 +30,13 @@ def command(method, path, params, tag, metadata=None):
         "metadata": metadata
     })
     responses.queue_declare(queue='responses_'+tag, durable=True, auto_delete=False)
-    jobs.queue_declare(queue='jobs_'+tag, durable=True) # Declare a queue
+    jobs.queue_declare(queue='jobs_'+tag, durable=True, auto_delete=False) # Declare a queue
     jobs.basic_publish(exchange='',
             routing_key='jobs_'+tag,
             body=cmd)
 
 def aggregate(tag, param):
-    n = agg.queue_declare(queue='agg_'+tag, durable=True).method.message_count
+    n = agg.queue_declare(queue='agg_'+tag, durable=True, auto_delete=False).method.message_count
     agg.basic_publish(exchange='', routing_key='agg_'+tag, body=param)
     return n+1
 
