@@ -1,1 +1,4 @@
 klucze
+__pycache__/
+batch.sh
+dumps/
